@@ -3,12 +3,12 @@
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 
-
 type AuthMode = "signin" | "signup";
 
 export default function LoginPage() {
   const [mode, setMode] = useState<AuthMode>("signin");
   const router = useRouter();
+  const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL;
 
   // Form-ын state-үүд
   const [username, setUsername] = useState("");
@@ -40,7 +40,7 @@ export default function LoginPage() {
       setLoading(true);
       try {
         // Backend рүү хүсэлт илгээх хэсэг
-        const response = await fetch("http://127.0.0.1:8000/user/create_user", {
+        const response = await fetch(`${API_URL}/user/create_user`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -70,7 +70,7 @@ export default function LoginPage() {
       // НЭВТРЭХ ЛОГИК (FastAPI-тай холбогдох)
       setLoading(true);
       try {
-        const response = await fetch("http://127.0.0.1:8000/user/login", {
+        const response = await fetch(`${API_URL}/user/login`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",

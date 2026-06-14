@@ -29,12 +29,19 @@ const WaitingRoom = ({ roomId, userId, username }: Props) => {
   const [error, setError] = useState<string>("");
   const wsRef = useRef<WebSocket | null>(null);
 
+  const WS_URL = process.env.NEXT_PUBLIC_WS_URL;
+  const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL;
+
+  const ws = new WebSocket(
+    "wss://muushig-back-end.onrender.com/real_room/test/ws/test",
+  );
+  ws.onopen = () => console.log("✅ Connected!");
+  ws.onerror = (e) => console.log("❌ Error:", e);
+  ws.onclose = (e) => console.log("Closed:", e.code, e.reason);
   useEffect(() => {
     if (!userId) return; // ← userId хоосон байвал WebSocket нээхгүй
 
-    const ws = new WebSocket(
-      `ws://127.0.0.1:8000/real_room/${roomId}/ws/${userId}`,
-    );
+    const ws = new WebSocket(`${WS_URL}/real_room/${roomId}/ws/${userId}`);
     wsRef.current = ws;
 
     ws.onopen = () => {
@@ -61,7 +68,7 @@ const WaitingRoom = ({ roomId, userId, username }: Props) => {
 
   const fetchRoom = async () => {
     console.log("check id", roomId, userId, username);
-    const res = await fetch(`http://127.0.0.1:8000/real_room/${roomId}`);
+    const res = await fetch(`${BACKEND_URL}/real_room/${roomId}`);
     const data = await res.json();
     console.log("room data:", data);
     setRoom(data);

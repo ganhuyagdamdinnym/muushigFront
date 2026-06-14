@@ -54,6 +54,7 @@ const RoomPage = () => {
   const [playOrder, setPlayOrder] = useState<number[]>([]);
   const [selectedPlay, setSelectedPlay] = useState<Card | null>(null);
   const [message, setMessage] = useState<string>("");
+  const API_URL = process.env.PUBLIC_BACKEND_URL;
 
   useEffect(() => {
     const mapCard = (cardId: number): Card =>
@@ -61,7 +62,7 @@ const RoomPage = () => {
 
     const doFetch = async () => {
       try {
-        const res = await fetch(`http://127.0.0.1:8000/room/${id}`);
+        const res = await fetch(`${API_URL}/room/${id}`);
         const data = await res.json();
         console.log("Fetched room data:", data);
         const round = data.round;
@@ -524,7 +525,7 @@ const RoomPage = () => {
     });
 
     try {
-      const res = await fetch(`http://127.0.0.1:8000/room/${id}/round`, {
+      const res = await fetch(`${API_URL}/room/${id}/round`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(tricksWon),

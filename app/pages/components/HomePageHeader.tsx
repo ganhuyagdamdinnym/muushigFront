@@ -5,45 +5,46 @@ import { SideBar } from "./SideBar";
 
 export const HomePageHeader = () => {
   const [sideBarOpen, setSidebarOpen] = useState(false);
+  const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL;
 
-  // Анхны утга (Бэкэндээс өгөгдөл иртэл харагдана)
   const [user, setUser] = useState({
-    id: "b8d1da9e-9a87-4e8c-a3d1-6011d77b6872", // Жишээ ID
+    id: "",
     username: "Уншиж байна...",
     rating: 1200,
     avatarUrl: "https://api.dicebear.com/7.x/bottts/svg?seed=Tomoroo",
   });
 
-  // Нэр өөрчлөх функц
-  const handleUsernameChange = (newName: string) => {
-    setUser((prev) => ({ ...prev, username: newName }));
-  };
-
-  // Бэкэндээс хэрэглэгчийн мэдээлэл татах
-  const fetchName = async () => {
-    try {
-      const response = await fetch(`http://127.0.0.1:8000/user/${user.id}`);
-      if (!response.ok) {
-        throw new Error("Сүлжээний алдаа гарлаа");
-      }
-
-      const data = await response.json(); // .json() ашиглана!
-
-      if (data && data.name) {
-        setUser((prev) => ({
-          ...prev,
-          username: data.name,
-          rating: data.rating || prev.rating, // Хэрэв бэкэндээс rating ирвэл шинэчилнэ
-        }));
-      }
-    } catch (error) {
-      console.error("Хэрэглэгчийн мэдээллийг татахад алдаа гарлаа:", error);
-    }
-  };
+  useEffect(() => {
+    const id = localStorage.getItem("user_id") || "";
+    const username = localStorage.getItem("username") || "Тоглогч";
+    setUser((prev) => ({ ...prev, id, username }));
+  }, []);
 
   useEffect(() => {
+    if (!user.id) return;
+    const fetchName = async () => {
+      try {
+        const response = await fetch(`${API_URL}/user/${user.id}`);
+        if (!response.ok) return;
+        const data = await response.json();
+        if (data && data.username) {
+          setUser((prev) => ({
+            ...prev,
+            username: data.username,
+            rating: data.rating || prev.rating,
+          }));
+        }
+      } catch (error) {
+        console.error("Хэрэглэгчийн мэдээллийг татахад алдаа гарлаа:", error);
+      }
+    };
     fetchName();
-  }, []);
+  }, [user.id]);
+
+  const handleUsernameChange = (newName: string) => {
+    setUser((prev) => ({ ...prev, username: newName }));
+    localStorage.setItem("username", newName);
+  };
 
   return (
     <header className="fixed top-0 left-0 right-0 h-16 bg-slate-900/80 backdrop-blur-md border-b border-slate-800 px-6 flex items-center justify-between z-50 select-none">

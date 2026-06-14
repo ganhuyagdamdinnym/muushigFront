@@ -28,10 +28,10 @@ type Props = {
 
 const PLAYER_POSITIONS = [
   "bottom-4 left-1/2 -translate-x-1/2", // 0: Та (доод төв)
-  "top-4 left-4", // 1: Bot 1
-  "top-4 left-1/3 -translate-x-1/2", // 2: Bot 2
-  "top-4 right-1/3 translate-x-1/2", // 3: Bot 3
-  "top-4 right-4", // 4: Bot 4
+  "top-1/2 left-4", // 1: Bot 1
+  "top-4 left-1/4 -translate-x-1/2", // 2: Bot 2
+  "top-4 right-1/4 translate-x-1/2", // 3: Bot 3
+  "top-1/2 right-4", // 4: Bot 4
 ];
 
 const PlayerArea = ({

@@ -13,10 +13,12 @@ type RoomInfo = {
 export function ButtonDemo() {
   const router = useRouter();
   const [rooms, setRooms] = useState<RoomInfo[]>([]);
+  const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL;
+  const WS_URL = process.env.NEXT_PUBLIC_WS_URL;
 
   useEffect(() => {
     const fetchRooms = () => {
-      fetch("http://127.0.0.1:8000/real_room/list")
+      fetch(`${API_URL}/real_room/list`)
         .then((r) => r.json())
         .then(setRooms)
         .catch(() => {});
@@ -28,7 +30,7 @@ export function ButtonDemo() {
 
   const handleCreateRoom = async () => {
     try {
-      const res = await fetch("http://127.0.0.1:8000/room/create", {
+      const res = await fetch(`${API_URL}/room/create`, {
         method: "POST",
       });
       const data = await res.json();
@@ -48,7 +50,7 @@ export function ButtonDemo() {
         return;
       }
 
-      const res = await fetch("http://127.0.0.1:8000/real_room/create", {
+      const res = await fetch(`${API_URL}/real_room/create`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId, username }),
@@ -70,7 +72,7 @@ export function ButtonDemo() {
         return;
       }
 
-      await fetch(`http://127.0.0.1:8000/real_room/${roomId}/join`, {
+      await fetch(`${API_URL}/real_room/${roomId}/join`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId, username }),
