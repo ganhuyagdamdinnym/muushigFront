@@ -75,7 +75,6 @@ const MultiplayerRoomPage = ({ roomId, userId }: Props) => {
 
   const WS_URL = process.env.NEXT_PUBLIC_WS_URL;
 
-  // ── Synced setters ────────────────────────────────────────────────────────
   const setGameSynced = (gs: GameState) => {
     gameRef.current = gs;
     setGame(gs);
@@ -109,7 +108,6 @@ const MultiplayerRoomPage = ({ roomId, userId }: Props) => {
     setCurrentPlayIdx(i);
   };
 
-  // ── WebSocket ─────────────────────────────────────────────────────────────
   const sendWs = (msg: object) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify(msg));
@@ -126,7 +124,6 @@ const MultiplayerRoomPage = ({ roomId, userId }: Props) => {
 
       ws.onopen = () => {
         if (!isMounted) return;
-        console.log("[WS] Connected");
         setWsConnected(true);
         setMessage("");
       };
@@ -146,8 +143,6 @@ const MultiplayerRoomPage = ({ roomId, userId }: Props) => {
       ws.onclose = (e) => {
         if (!isMounted) return;
         setWsConnected(false);
-        console.log("[WS] Closed:", e.code, e.reason);
-        // Автоматаар дахин холбогдох (3 секундын дараа)
         if (isMounted && e.code !== 1000) {
           setTimeout(() => {
             if (isMounted) connect();
@@ -163,7 +158,6 @@ const MultiplayerRoomPage = ({ roomId, userId }: Props) => {
       wsRef.current?.close(1000, "unmount");
       wsRef.current = null;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomId, userId, WS_URL]);
 
   const handleWsMessage = useCallback(
@@ -208,22 +202,28 @@ const MultiplayerRoomPage = ({ roomId, userId }: Props) => {
         const slotIdx = msg.slotIndex as number;
         const gs = gameRef.current;
         if (!gs) return;
+
+        // Нөгөө тоглогчийн карт солилтыг тусгана
         const newDeck = gs.deck.slice(count);
         const newGs = { ...gs, deck: newDeck };
         setGameSynced(newGs);
 
-        const nextIdx = swapIdxRef.current + 1;
-        setSwapIdxSynced(nextIdx);
-        const ord = swapOrderRef.current;
-        if (nextIdx >= ord.length) {
+        // ── ЗАСВАР: swapOrder дахь slotIdx-ийн байршлыг олж дараагийн рүү шилжих ──
+        const swapOrd = swapOrderRef.current;
+        const currentSwapIdx = swapOrd.indexOf(slotIdx);
+        const nextSwapIdx = currentSwapIdx + 1;
+        setSwapIdxSynced(nextSwapIdx);
+
+        if (nextSwapIdx >= swapOrd.length) {
           setTimeout(() => startDealerSwap(newGs), 100);
         } else {
-          const nextPid = ord[nextIdx];
-          if (nextPid === mySlotRef.current) {
+          const nextPid = swapOrd[nextSwapIdx];
+          const myIdx = mySlotRef.current;
+          if (nextPid === myIdx) {
             setPhase("swap");
           } else if (slotsRef.current[nextPid]?.isBot) {
             setPhase("waitingBot");
-            setTimeout(() => botSwap(newGs, ord, nextIdx), 800);
+            setTimeout(() => botSwap(newGs, swapOrd, nextSwapIdx), 800);
           } else {
             setPhase("waitingBot");
           }
@@ -257,19 +257,25 @@ const MultiplayerRoomPage = ({ roomId, userId }: Props) => {
         setCurrentTrick(newTrick);
         setGameSynced(newGs);
 
-        const nextIdx = currentPlayIdxRef.current + 1;
-        setCurrentPlayIdxSynced(nextIdx);
-        const ord = playOrderRef.current;
-        if (nextIdx >= ord.length) {
-          setTimeout(() => resolveTrick(newGs, newTrick, ord), 600);
+        // ── ЗАСВАР: playOrder дахь slotIdx-ийн байршлыг олж дараагийн рүү шилжих ──
+        const playOrd = playOrderRef.current;
+        const currentPlayPos = playOrd.indexOf(slotIdx);
+        const nextPlayIdx = currentPlayPos + 1;
+        setCurrentPlayIdxSynced(nextPlayIdx);
+
+        if (nextPlayIdx >= playOrd.length) {
+          setTimeout(() => resolveTrick(newGs, newTrick, playOrd), 600);
         } else {
-          const nextPid = ord[nextIdx];
+          const nextPid = playOrd[nextPlayIdx];
           const myIdx = mySlotRef.current;
           if (nextPid === myIdx) {
             setPhase("playing");
           } else if (slotsRef.current[nextPid]?.isBot) {
             setPhase("waitingBot");
-            setTimeout(() => botPlay(newGs, ord, nextIdx, newTrick), 800);
+            setTimeout(
+              () => botPlay(newGs, playOrd, nextPlayIdx, newTrick),
+              800,
+            );
           } else {
             setPhase("waitingBot");
           }
@@ -288,7 +294,6 @@ const MultiplayerRoomPage = ({ roomId, userId }: Props) => {
     [],
   );
 
-  // ── Room data → GameState ─────────────────────────────────────────────────
   const initFromData = (data: Record<string, unknown>) => {
     const slotsData = data.slots as Slot[];
     setSlotsSynced(slotsData);
@@ -342,7 +347,6 @@ const MultiplayerRoomPage = ({ roomId, userId }: Props) => {
     }
   };
 
-  // ── Шат 1: Орох/өнжих ───────────────────────────────────────────────────
   const botDecide = (
     gs: GameState,
     order: number[],
@@ -412,7 +416,6 @@ const MultiplayerRoomPage = ({ roomId, userId }: Props) => {
     );
   };
 
-  // ── Шат 2: Солилцоо ─────────────────────────────────────────────────────
   const startSwapPhase = (gs: GameState): void => {
     const entered = orderFrom(nextId(gs.currentPlayer)).filter(
       (pid: number) => !gs.players.find((p: Player) => p.id === pid)!.skipped,
@@ -447,7 +450,7 @@ const MultiplayerRoomPage = ({ roomId, userId }: Props) => {
     }
     const sorted = [...player.cards]
       .filter((c: Card) => c.suit !== gs.trumpSuit)
-      .sort((a: Card, b: Card) => a.rank - b.rank);
+      .sort((a, b) => a.rank - b.rank);
     const swapCount = Math.min(
       Math.floor(Math.random() * Math.min(sorted.length, maxSwap)) + 1,
       maxSwap,
@@ -485,7 +488,6 @@ const MultiplayerRoomPage = ({ roomId, userId }: Props) => {
 
     setSwapIdxSynced(nextIdx);
     const nextPid = order[nextIdx];
-
     if (nextPid === mySlotRef.current) {
       setPhase("swap");
     } else if (slotsRef.current[nextPid]?.isBot) {
@@ -529,7 +531,6 @@ const MultiplayerRoomPage = ({ roomId, userId }: Props) => {
     });
   };
 
-  // ── Dealer онцгой эрх ───────────────────────────────────────────────────
   const startDealerSwap = (gs: GameState): void => {
     const dealer = gs.players.find((p: Player) => p.id === gs.currentPlayer)!;
     if (dealer.skipped) {
@@ -539,9 +540,7 @@ const MultiplayerRoomPage = ({ roomId, userId }: Props) => {
     if (gs.currentPlayer === mySlotRef.current) {
       setPhase("dealerSwap");
     } else if (slotsRef.current[gs.currentPlayer]?.isBot) {
-      const sorted = [...dealer.cards].sort(
-        (a: Card, b: Card) => a.rank - b.rank,
-      );
+      const sorted = [...dealer.cards].sort((a, b) => a.rank - b.rank);
       applyDealerSwap(gs, sorted[0]);
     } else {
       setPhase("waitingBot");
@@ -557,9 +556,8 @@ const MultiplayerRoomPage = ({ roomId, userId }: Props) => {
     const newPlayers = gs.players.map((p: Player) =>
       p.id === gs.currentPlayer ? { ...p, cards: newHand } : p,
     );
-    const newGs = { ...gs, players: newPlayers };
-    setGameSynced(newGs);
-    startPlayPhase(newGs);
+    setGameSynced({ ...gs, players: newPlayers });
+    startPlayPhase({ ...gs, players: newPlayers });
   };
 
   const handleDealerSwap = (card: Card): void => {
@@ -576,7 +574,6 @@ const MultiplayerRoomPage = ({ roomId, userId }: Props) => {
     startPlayPhase(gs);
   };
 
-  // ── Шат 3: Тоглолт ─────────────────────────────────────────────────────
   const startPlayPhase = (gs: GameState): void => {
     const entered = orderFrom(nextId(gs.currentPlayer)).filter(
       (pid: number) => !gs.players.find((p: Player) => p.id === pid)!.skipped,
@@ -608,24 +605,23 @@ const MultiplayerRoomPage = ({ roomId, userId }: Props) => {
     player: Player,
     trick: Trick | null,
     gs: GameState,
-    positionInTrick: number,
-    totalInTrick: number,
+    pos: number,
+    total: number,
   ): Card[] => {
     if (!trick) return player.cards;
     const lead = trick.leadCard;
-    const isLastPlayer = positionInTrick === totalInTrick - 1;
-    const samesuit = player.cards.filter((c: Card) => c.suit === lead.suit);
-    const higher = samesuit.filter((c: Card) => c.rank > lead.rank);
-    const trump = player.cards.filter((c: Card) => c.suit === gs.trumpSuit);
-    const leadIsTrump = lead.suit === gs.trumpSuit;
-    if (leadIsTrump) {
+    const isLast = pos === total - 1;
+    const same = player.cards.filter((c) => c.suit === lead.suit);
+    const higher = same.filter((c) => c.rank > lead.rank);
+    const trump = player.cards.filter((c) => c.suit === gs.trumpSuit);
+    if (lead.suit === gs.trumpSuit) {
       if (higher.length > 0) return higher;
-      if (samesuit.length > 0) return samesuit;
+      if (same.length > 0) return same;
       return player.cards;
     }
     if (higher.length > 0) return higher;
-    if (samesuit.length > 0) return samesuit;
-    if (!isLastPlayer && trump.length > 0) return trump;
+    if (same.length > 0) return same;
+    if (!isLast && trump.length > 0) return trump;
     return player.cards;
   };
 
@@ -636,9 +632,9 @@ const MultiplayerRoomPage = ({ roomId, userId }: Props) => {
     trick: Trick | null,
   ): void => {
     const playerId = order[idx];
-    const player = gs.players.find((p: Player) => p.id === playerId)!;
+    const player = gs.players.find((p) => p.id === playerId)!;
     const legal = legalCards(player, trick, gs, idx, order.length);
-    const card = [...legal].sort((a: Card, b: Card) => b.rank - a.rank)[0];
+    const card = [...legal].sort((a, b) => b.rank - a.rank)[0];
     processPlay(gs, order, idx, trick, card, false);
   };
 
@@ -651,9 +647,9 @@ const MultiplayerRoomPage = ({ roomId, userId }: Props) => {
     isMe: boolean,
   ): void => {
     const playerId = order[idx];
-    const newPlayers = gs.players.map((p: Player) =>
+    const newPlayers = gs.players.map((p) =>
       p.id === playerId
-        ? { ...p, cards: p.cards.filter((c: Card) => c.id !== card.id) }
+        ? { ...p, cards: p.cards.filter((c) => c.id !== card.id) }
         : p,
     );
     const newTrick: Trick = trick
@@ -674,7 +670,6 @@ const MultiplayerRoomPage = ({ roomId, userId }: Props) => {
 
     setCurrentPlayIdxSynced(nextIdx);
     const nextPid = order[nextIdx];
-
     if (nextPid === mySlotRef.current) {
       setPhase("playing");
     } else if (slotsRef.current[nextPid]?.isBot) {
@@ -695,7 +690,7 @@ const MultiplayerRoomPage = ({ roomId, userId }: Props) => {
       currentPlayIdxRef.current,
       playOrderRef.current.length,
     );
-    if (!legal.find((c: Card) => c.id === selectedPlay.id)) {
+    if (!legal.find((c) => c.id === selectedPlay.id)) {
       setMessage("⚠️ Энэ картыг тоглох боломжгүй!");
       return;
     }
@@ -715,24 +710,17 @@ const MultiplayerRoomPage = ({ roomId, userId }: Props) => {
     );
   };
 
-  // ── Гэрийн хожигч ──────────────────────────────────────────────────────
   const resolveTrick = (gs: GameState, trick: Trick, order: number[]): void => {
-    const trumpPlays = trick.plays.filter(
-      (p: TrickPlay) => p.card.suit === gs.trumpSuit,
+    const trumpPlays = trick.plays.filter((p) => p.card.suit === gs.trumpSuit);
+    const leadPlays = trick.plays.filter(
+      (p) => p.card.suit === trick.leadCard.suit,
     );
-    const leadSuitPlays = trick.plays.filter(
-      (p: TrickPlay) => p.card.suit === trick.leadCard.suit,
-    );
-    const winner: TrickPlay =
+    const winner =
       trumpPlays.length > 0
-        ? trumpPlays.reduce((best: TrickPlay, cur: TrickPlay) =>
-            cur.card.rank > best.card.rank ? cur : best,
-          )
-        : leadSuitPlays.reduce((best: TrickPlay, cur: TrickPlay) =>
-            cur.card.rank > best.card.rank ? cur : best,
-          );
+        ? trumpPlays.reduce((b, c) => (c.card.rank > b.card.rank ? c : b))
+        : leadPlays.reduce((b, c) => (c.card.rank > b.card.rank ? c : b));
 
-    const newPlayers = gs.players.map((p: Player) =>
+    const newPlayers = gs.players.map((p) =>
       p.id === winner.playerId ? { ...p, tricksWon: p.tricksWon + 1 } : p,
     );
     const newGs = { ...gs, players: newPlayers };
@@ -744,16 +732,14 @@ const MultiplayerRoomPage = ({ roomId, userId }: Props) => {
     setMessage(`🏠 ${winnerName} гэр авлаа!`);
 
     const allEmpty = newGs.players
-      .filter((p: Player) => !p.skipped)
-      .every((p: Player) => p.cards.length === 0);
-
+      .filter((p) => !p.skipped)
+      .every((p) => p.cards.length === 0);
     if (allEmpty) {
       setTimeout(() => endRound(newGs), 1000);
     } else {
       setTimeout(() => {
         const newOrder = orderFrom(winner.playerId).filter(
-          (pid: number) =>
-            !newGs.players.find((p: Player) => p.id === pid)!.skipped,
+          (pid) => !newGs.players.find((p) => p.id === pid)!.skipped,
         );
         setPlayOrderSynced(newOrder);
         setCurrentPlayIdxSynced(0);
@@ -774,20 +760,14 @@ const MultiplayerRoomPage = ({ roomId, userId }: Props) => {
     }
   };
 
-  // ── Тоглолт дуусах ─────────────────────────────────────────────────────
   const endRound = async (gs: GameState): Promise<void> => {
     const tricksWon: Record<string, number> = {};
-    gs.players.forEach((p: Player) => {
+    gs.players.forEach((p) => {
       if (!p.skipped) tricksWon[String(p.id)] = p.tricksWon;
     });
-    sendWs({
-      type: "end_round",
-      slotIndex: mySlotRef.current, // ← slotIndex нэмсэн
-      tricksWon,
-    });
+    sendWs({ type: "end_round", slotIndex: mySlotRef.current, tricksWon });
   };
 
-  // ── Render ──────────────────────────────────────────────────────────────
   if (!game) {
     return (
       <div className="flex h-screen items-center justify-center bg-slate-900 text-white text-xl">
@@ -811,16 +791,15 @@ const MultiplayerRoomPage = ({ roomId, userId }: Props) => {
           playOrder.length,
         )
       : [];
-  const legalIds = new Set(legalNow.map((c: Card) => c.id));
+  const legalIds = new Set(legalNow.map((c) => c.id));
   const maxSwapNow = Math.min(game.deck.length, humanPlayer?.cards.length ?? 0);
-
   const slotLabels =
     slots.length > 0
       ? slots.map((s) => s.username || PLAYER_LABELS[s.slotIndex])
       : PLAYER_LABELS;
 
   return (
-    <div className="relative h-screen w-full bg-slate-900 text-white overflow-hidden select-none">
+    <div className="relative h-[100dvh] w-full bg-slate-900 text-white overflow-hidden select-none">
       <GameHeader game={game} phase={phase} message={message} />
       <PlayerArea
         game={game}
@@ -837,7 +816,7 @@ const MultiplayerRoomPage = ({ roomId, userId }: Props) => {
         mySlotIndex={mySlotIndex}
         slotLabels={slotLabels}
         onToggleSwapCard={toggleSwapCard}
-        onSelectPlayCard={(card: Card) => setSelectedPlay(card)}
+        onSelectPlayCard={(card) => setSelectedPlay(card)}
       />
       <CenterArea game={game} currentTrick={currentTrick} />
       <ActionButtons

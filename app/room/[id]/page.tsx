@@ -54,7 +54,8 @@ const RoomPage = () => {
   const [playOrder, setPlayOrder] = useState<number[]>([]);
   const [selectedPlay, setSelectedPlay] = useState<Card | null>(null);
   const [message, setMessage] = useState<string>("");
-  const API_URL = process.env.PUBLIC_BACKEND_URL;
+
+  const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL;
 
   useEffect(() => {
     const mapCard = (cardId: number): Card =>
