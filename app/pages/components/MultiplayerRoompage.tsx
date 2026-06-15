@@ -8,7 +8,6 @@ import {
   Phase,
   Player,
   Trick,
-  TrickPlay,
   PLAYER_LABELS,
 } from "../../model/types";
 import GameHeader from "../../pages/components/GameHeader";
@@ -75,6 +74,7 @@ const MultiplayerRoomPage = ({ roomId, userId }: Props) => {
 
   const WS_URL = process.env.NEXT_PUBLIC_WS_URL;
 
+  // ── Ref+State хамт тохируулах хэрэгслүүд ────────────────────────────────
   const setGameSynced = (gs: GameState) => {
     gameRef.current = gs;
     setGame(gs);
@@ -114,6 +114,80 @@ const MultiplayerRoomPage = ({ roomId, userId }: Props) => {
     }
   };
 
+  // ── Дараагийн тоглогч хэн болохыг шийдэж phase тохируулах ──────────────
+  // isHuman=true бол хүлээх, bot бол автоматаар, өөрөө бол идэвхтэй phase
+  const resolveNextDecide = (
+    gs: GameState,
+    ord: number[],
+    nextIdx: number,
+    slotsData: Slot[],
+    myIdx: number,
+  ) => {
+    if (nextIdx >= ord.length) {
+      startSwapPhase(gs, slotsData, myIdx);
+      return;
+    }
+    setDecideIdxSynced(nextIdx);
+    const nextPid = ord[nextIdx];
+    if (nextPid === myIdx) {
+      setPhase("decide");
+    } else if (slotsData[nextPid]?.isBot) {
+      setPhase("waitingBot");
+      setTimeout(() => botDecide(gs, ord, nextIdx, slotsData, myIdx), 800);
+    } else {
+      // Өөр хүн тоглогч — зүгээр хүлээнэ
+      setPhase("waitingBot");
+    }
+  };
+
+  const resolveNextSwap = (
+    gs: GameState,
+    ord: number[],
+    nextIdx: number,
+    slotsData: Slot[],
+    myIdx: number,
+  ) => {
+    if (nextIdx >= ord.length) {
+      startDealerSwap(gs, slotsData, myIdx);
+      return;
+    }
+    setSwapIdxSynced(nextIdx);
+    const nextPid = ord[nextIdx];
+    if (nextPid === myIdx) {
+      setPhase("swap");
+    } else if (slotsData[nextPid]?.isBot) {
+      setPhase("waitingBot");
+      setTimeout(() => botSwap(gs, ord, nextIdx, slotsData, myIdx), 800);
+    } else {
+      setPhase("waitingBot");
+    }
+  };
+
+  const resolveNextPlay = (
+    gs: GameState,
+    ord: number[],
+    nextIdx: number,
+    trick: Trick,
+    slotsData: Slot[],
+    myIdx: number,
+  ) => {
+    if (nextIdx >= ord.length) {
+      setTimeout(() => resolveTrick(gs, trick, ord, slotsData, myIdx), 600);
+      return;
+    }
+    setCurrentPlayIdxSynced(nextIdx);
+    const nextPid = ord[nextIdx];
+    if (nextPid === myIdx) {
+      setPhase("playing");
+    } else if (slotsData[nextPid]?.isBot) {
+      setPhase("waitingBot");
+      setTimeout(() => botPlay(gs, ord, nextIdx, trick, slotsData, myIdx), 800);
+    } else {
+      setPhase("waitingBot");
+    }
+  };
+
+  // ── WebSocket ────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!userId || !roomId || !WS_URL) return;
     let isMounted = true;
@@ -123,177 +197,132 @@ const MultiplayerRoomPage = ({ roomId, userId }: Props) => {
       wsRef.current = ws;
 
       ws.onopen = () => {
-        if (!isMounted) return;
-        setWsConnected(true);
-        setMessage("");
+        if (isMounted) {
+          setWsConnected(true);
+          setMessage("");
+        }
       };
-
       ws.onmessage = (e) => {
-        if (!isMounted) return;
-        const msg = JSON.parse(e.data);
-        handleWsMessage(msg);
+        if (isMounted) handleWsMessage(JSON.parse(e.data));
       };
-
       ws.onerror = () => {
-        if (!isMounted) return;
-        setWsConnected(false);
-        setMessage("⚠️ WebSocket алдаа гарлаа");
+        if (isMounted) {
+          setWsConnected(false);
+          setMessage("⚠️ WebSocket алдаа");
+        }
       };
-
       ws.onclose = (e) => {
         if (!isMounted) return;
         setWsConnected(false);
-        if (isMounted && e.code !== 1000) {
+        if (e.code !== 1000)
           setTimeout(() => {
             if (isMounted) connect();
           }, 3000);
-        }
       };
     };
 
     connect();
-
     return () => {
       isMounted = false;
       wsRef.current?.close(1000, "unmount");
       wsRef.current = null;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomId, userId, WS_URL]);
 
-  const handleWsMessage = useCallback(
-    (msg: Record<string, unknown>) => {
-      const type = msg.type as string;
+  // ── WS мессеж боловсруулах ───────────────────────────────────────────────
+  // ГҮЙЦЭТГЭЛ: WS message ирэхэд зөвхөн state шинэчлэх.
+  // Дараагийн хүн тоглогч бол phase="waitingBot" (хүлээх),
+  // bot бол автоматаар, өөрөө бол идэвхтэй phase.
+  const handleWsMessage = useCallback((msg: Record<string, unknown>) => {
+    const type = msg.type as string;
+    const gs = gameRef.current;
+    const slotsData = slotsRef.current;
+    const myIdx = mySlotRef.current;
 
-      if (type === "room_state" || type === "game_started") {
-        initFromData(msg.data as Record<string, unknown>);
-      } else if (type === "player_decided") {
-        const slotIdx = msg.slotIndex as number;
-        const joining = msg.joining as boolean;
-        const gs = gameRef.current;
-        if (!gs) return;
-        const newPlayers = gs.players.map((p: Player) =>
-          p.id === slotIdx ? { ...p, skipped: !joining } : p,
-        );
-        const newGs = { ...gs, players: newPlayers };
-        setGameSynced(newGs);
+    if (type === "room_state" || type === "game_started") {
+      initFromData(msg.data as Record<string, unknown>);
+    } else if (type === "player_decided") {
+      if (!gs) return;
+      const slotIdx = msg.slotIndex as number;
+      const joining = msg.joining as boolean;
 
-        const nextIdx = decideIdxRef.current + 1;
-        setDecideIdxSynced(nextIdx);
-        const ord = decideOrderRef.current;
-        if (nextIdx >= ord.length) {
-          setTimeout(() => startSwapPhase(newGs), 100);
-        } else {
-          const nextPid = ord[nextIdx];
-          const myIdx = mySlotRef.current;
-          if (nextPid === myIdx) {
-            setPhase("decide");
-          } else if (slotsRef.current[nextPid]?.isBot) {
-            setPhase("waitingBot");
-            setTimeout(
-              () => botDecide(newGs, ord, nextIdx, slotsRef.current, myIdx),
-              800,
-            );
-          } else {
-            setPhase("waitingBot");
+      // Энэ тоглогчийн шийдвэрийг тусгана
+      const newPlayers = gs.players.map((p: Player) =>
+        p.id === slotIdx ? { ...p, skipped: !joining } : p,
+      );
+      const newGs = { ...gs, players: newPlayers };
+      setGameSynced(newGs);
+
+      // Өөрийн шийдвэр бол WS-ээр ирэхийг хүлээлгүй аль хэдийн davshsan тул давхардахгүйн тулд skip
+      if (slotIdx === myIdx) return;
+
+      const ord = decideOrderRef.current;
+      const curIdx = ord.indexOf(slotIdx);
+      resolveNextDecide(newGs, ord, curIdx + 1, slotsData, myIdx);
+    } else if (type === "cards_swapped") {
+      if (!gs) return;
+      const count = msg.count as number;
+      const slotIdx = msg.slotIndex as number;
+
+      // Картын тоог deck-ээс хасна (зөвхөн тоо мэддэг, ямар карт мэддэггүй)
+      const newDeck = gs.deck.slice(count);
+      const newGs = { ...gs, deck: newDeck };
+      setGameSynced(newGs);
+
+      // Өөрийн swap бол аль хэдийн davshsan
+      if (slotIdx === myIdx) return;
+
+      const swapOrd = swapOrderRef.current;
+      const curIdx = swapOrd.indexOf(slotIdx);
+      resolveNextSwap(newGs, swapOrd, curIdx + 1, slotsData, myIdx);
+    } else if (type === "card_played") {
+      if (!gs) return;
+      const slotIdx = msg.slotIndex as number;
+      const card = msg.card as Card;
+
+      const newPlayers = gs.players.map((p: Player) =>
+        p.id === slotIdx
+          ? { ...p, cards: p.cards.filter((c: Card) => c.id !== card.id) }
+          : p,
+      );
+      const newGs = { ...gs, players: newPlayers };
+
+      const prevTrick = currentTrickRef.current;
+      const newTrick: Trick = prevTrick
+        ? {
+            ...prevTrick,
+            plays: [...prevTrick.plays, { playerId: slotIdx, card }],
           }
-        }
-      } else if (type === "cards_swapped") {
-        const count = msg.count as number;
-        const slotIdx = msg.slotIndex as number;
-        const gs = gameRef.current;
-        if (!gs) return;
+        : {
+            leadCard: card,
+            leadPlayer: slotIdx,
+            plays: [{ playerId: slotIdx, card }],
+          };
 
-        // Нөгөө тоглогчийн карт солилтыг тусгана
-        const newDeck = gs.deck.slice(count);
-        const newGs = { ...gs, deck: newDeck };
-        setGameSynced(newGs);
+      currentTrickRef.current = newTrick;
+      setCurrentTrick(newTrick);
+      setGameSynced(newGs);
 
-        // ── ЗАСВАР: swapOrder дахь slotIdx-ийн байршлыг олж дараагийн рүү шилжих ──
-        const swapOrd = swapOrderRef.current;
-        const currentSwapIdx = swapOrd.indexOf(slotIdx);
-        const nextSwapIdx = currentSwapIdx + 1;
-        setSwapIdxSynced(nextSwapIdx);
+      // Өөрийн карт бол аль хэдийн davshsan
+      if (slotIdx === myIdx) return;
 
-        if (nextSwapIdx >= swapOrd.length) {
-          setTimeout(() => startDealerSwap(newGs), 100);
-        } else {
-          const nextPid = swapOrd[nextSwapIdx];
-          const myIdx = mySlotRef.current;
-          if (nextPid === myIdx) {
-            setPhase("swap");
-          } else if (slotsRef.current[nextPid]?.isBot) {
-            setPhase("waitingBot");
-            setTimeout(() => botSwap(newGs, swapOrd, nextSwapIdx), 800);
-          } else {
-            setPhase("waitingBot");
-          }
-        }
-      } else if (type === "card_played") {
-        const slotIdx = msg.slotIndex as number;
-        const card = msg.card as Card;
-        const gs = gameRef.current;
-        if (!gs) return;
-        const newPlayers = gs.players.map((p: Player) =>
-          p.id === slotIdx
-            ? { ...p, cards: p.cards.filter((c: Card) => c.id !== card.id) }
-            : p,
-        );
-        const newGs = { ...gs, players: newPlayers };
-
-        const newTrick: Trick = currentTrickRef.current
-          ? {
-              ...currentTrickRef.current,
-              plays: [
-                ...currentTrickRef.current.plays,
-                { playerId: slotIdx, card },
-              ],
-            }
-          : {
-              leadCard: card,
-              leadPlayer: slotIdx,
-              plays: [{ playerId: slotIdx, card }],
-            };
-        currentTrickRef.current = newTrick;
-        setCurrentTrick(newTrick);
-        setGameSynced(newGs);
-
-        // ── ЗАСВАР: playOrder дахь slotIdx-ийн байршлыг олж дараагийн рүү шилжих ──
-        const playOrd = playOrderRef.current;
-        const currentPlayPos = playOrd.indexOf(slotIdx);
-        const nextPlayIdx = currentPlayPos + 1;
-        setCurrentPlayIdxSynced(nextPlayIdx);
-
-        if (nextPlayIdx >= playOrd.length) {
-          setTimeout(() => resolveTrick(newGs, newTrick, playOrd), 600);
-        } else {
-          const nextPid = playOrd[nextPlayIdx];
-          const myIdx = mySlotRef.current;
-          if (nextPid === myIdx) {
-            setPhase("playing");
-          } else if (slotsRef.current[nextPid]?.isBot) {
-            setPhase("waitingBot");
-            setTimeout(
-              () => botPlay(newGs, playOrd, nextPlayIdx, newTrick),
-              800,
-            );
-          } else {
-            setPhase("waitingBot");
-          }
-        }
-      } else if (type === "round_ended") {
-        const data = msg.data as Record<string, unknown>;
-        if ((data.status as string) === "finished") {
-          setMessage("🎉 Тоглоом дууслаа!");
-          setPhase("playing");
-        } else {
-          initFromData(data);
-        }
+      const playOrd = playOrderRef.current;
+      const curIdx = playOrd.indexOf(slotIdx);
+      resolveNextPlay(newGs, playOrd, curIdx + 1, newTrick, slotsData, myIdx);
+    } else if (type === "round_ended") {
+      const data = msg.data as Record<string, unknown>;
+      if ((data.status as string) === "finished") {
+        setMessage("🎉 Тоглоом дууслаа!");
+        setPhase("playing");
+      } else {
+        initFromData(data);
       }
-    },
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
-  );
+  }, []);
 
+  // ── Тоглоом эхлүүлэх ────────────────────────────────────────────────────
   const initFromData = (data: Record<string, unknown>) => {
     const slotsData = data.slots as Slot[];
     setSlotsSynced(slotsData);
@@ -336,17 +365,10 @@ const MultiplayerRoomPage = ({ roomId, userId }: Props) => {
     setDecideIdxSynced(0);
     setMessage("");
 
-    const firstPid = order[0];
-    if (firstPid === myActualIdx) {
-      setPhase("decide");
-    } else if (slotsData[firstPid]?.isBot) {
-      setPhase("waitingBot");
-      setTimeout(() => botDecide(gs, order, 0, slotsData, myActualIdx), 800);
-    } else {
-      setPhase("waitingBot");
-    }
+    resolveNextDecide(gs, order, 0, slotsData, myActualIdx);
   };
 
+  // ── 1-р шат: Орох/өнжих ─────────────────────────────────────────────────
   const botDecide = (
     gs: GameState,
     order: number[],
@@ -365,58 +387,42 @@ const MultiplayerRoomPage = ({ roomId, userId }: Props) => {
     const highCards = player.cards.filter((c: Card) => c.rank >= 11);
     const shouldJoin =
       autoJoin || trumpCards.length >= 1 || highCards.length >= 2;
-    advanceDecide(gs, order, idx, shouldJoin, slotsData, myIdx);
-  };
 
-  const advanceDecide = (
-    gs: GameState,
-    order: number[],
-    idx: number,
-    joining: boolean,
-    slotsData: Slot[],
-    myIdx: number,
-  ): void => {
-    const playerId = order[idx];
+    // Bot-ын шийдвэрийг WS-ээр илгээнэ
+    sendWs({ type: "decide", slotIndex: playerId, joining: shouldJoin });
+
     const newPlayers = gs.players.map((p: Player) =>
-      p.id === playerId ? { ...p, skipped: !joining } : p,
+      p.id === playerId ? { ...p, skipped: !shouldJoin } : p,
     );
     const newGs = { ...gs, players: newPlayers };
     setGameSynced(newGs);
-
-    const nextIdx = idx + 1;
-    if (nextIdx >= order.length) {
-      startSwapPhase(newGs);
-      return;
-    }
-
-    setDecideIdxSynced(nextIdx);
-    const nextPid = order[nextIdx];
-
-    if (nextPid === myIdx) {
-      setPhase("decide");
-    } else if (slotsData[nextPid]?.isBot) {
-      setPhase("waitingBot");
-      setTimeout(() => botDecide(newGs, order, nextIdx, slotsData, myIdx), 800);
-    } else {
-      setPhase("waitingBot");
-    }
+    resolveNextDecide(newGs, order, idx + 1, slotsData, myIdx);
   };
 
   const handlePlayerJoin = (joining: boolean): void => {
     const gs = gameRef.current;
     if (!gs) return;
-    sendWs({ type: "decide", slotIndex: mySlotRef.current, joining });
-    advanceDecide(
-      gs,
-      decideOrderRef.current,
-      decideIdxRef.current,
-      joining,
-      slotsRef.current,
-      mySlotRef.current,
+    const ord = decideOrderRef.current;
+    const idx = decideIdxRef.current;
+    const myIdx = mySlotRef.current;
+    const slotsData = slotsRef.current;
+
+    sendWs({ type: "decide", slotIndex: myIdx, joining });
+
+    const newPlayers = gs.players.map((p: Player) =>
+      p.id === myIdx ? { ...p, skipped: !joining } : p,
     );
+    const newGs = { ...gs, players: newPlayers };
+    setGameSynced(newGs);
+    resolveNextDecide(newGs, ord, idx + 1, slotsData, myIdx);
   };
 
-  const startSwapPhase = (gs: GameState): void => {
+  // ── 2-р шат: Солилцоо ────────────────────────────────────────────────────
+  const startSwapPhase = (
+    gs: GameState,
+    slotsData: Slot[],
+    myIdx: number,
+  ): void => {
     const entered = orderFrom(nextId(gs.currentPlayer)).filter(
       (pid: number) => !gs.players.find((p: Player) => p.id === pid)!.skipped,
     );
@@ -425,47 +431,41 @@ const MultiplayerRoomPage = ({ roomId, userId }: Props) => {
     setSelectedSwaps([]);
 
     if (entered.length === 0) {
-      startDealerSwap(gs);
+      startDealerSwap(gs, slotsData, myIdx);
       return;
     }
-
-    const first = entered[0];
-    if (first === mySlotRef.current) {
-      setPhase("swap");
-    } else if (slotsRef.current[first]?.isBot) {
-      setPhase("waitingBot");
-      setTimeout(() => botSwap(gs, entered, 0), 800);
-    } else {
-      setPhase("waitingBot");
-    }
+    resolveNextSwap(gs, entered, 0, slotsData, myIdx);
   };
 
-  const botSwap = (gs: GameState, order: number[], idx: number): void => {
-    const playerId = order[idx];
-    const player = gs.players.find((p: Player) => p.id === playerId)!;
-    const maxSwap = Math.min(gs.deck.length, player.cards.length);
-    if (maxSwap === 0) {
-      advanceSwap(gs, order, idx, []);
-      return;
-    }
-    const sorted = [...player.cards]
-      .filter((c: Card) => c.suit !== gs.trumpSuit)
-      .sort((a, b) => a.rank - b.rank);
-    const swapCount = Math.min(
-      Math.floor(Math.random() * Math.min(sorted.length, maxSwap)) + 1,
-      maxSwap,
-    );
-    advanceSwap(gs, order, idx, sorted.slice(0, swapCount));
-  };
-
-  const advanceSwap = (
+  const botSwap = (
     gs: GameState,
     order: number[],
     idx: number,
-    toDiscard: Card[],
+    slotsData: Slot[],
+    myIdx: number,
   ): void => {
     const playerId = order[idx];
     const player = gs.players.find((p: Player) => p.id === playerId)!;
+    const maxSwap = Math.min(gs.deck.length, player.cards.length);
+
+    let toDiscard: Card[] = [];
+    if (maxSwap > 0) {
+      const sorted = [...player.cards]
+        .filter((c: Card) => c.suit !== gs.trumpSuit)
+        .sort((a, b) => a.rank - b.rank);
+      const swapCount = Math.min(
+        Math.floor(Math.random() * Math.min(sorted.length, maxSwap)) + 1,
+        maxSwap,
+      );
+      toDiscard = sorted.slice(0, swapCount);
+    }
+
+    sendWs({
+      type: "swap_cards",
+      slotIndex: playerId,
+      count: toDiscard.length,
+    });
+
     const drawn = gs.deck.slice(0, toDiscard.length);
     const remainingDeck = gs.deck.slice(toDiscard.length);
     const discardIds = toDiscard.map((c: Card) => c.id);
@@ -478,42 +478,52 @@ const MultiplayerRoomPage = ({ roomId, userId }: Props) => {
     );
     const newGs = { ...gs, players: newPlayers, deck: remainingDeck };
     setGameSynced(newGs);
-    setSelectedSwaps([]);
-
-    const nextIdx = idx + 1;
-    if (nextIdx >= order.length) {
-      startDealerSwap(newGs);
-      return;
-    }
-
-    setSwapIdxSynced(nextIdx);
-    const nextPid = order[nextIdx];
-    if (nextPid === mySlotRef.current) {
-      setPhase("swap");
-    } else if (slotsRef.current[nextPid]?.isBot) {
-      setPhase("waitingBot");
-      setTimeout(() => botSwap(newGs, order, nextIdx), 800);
-    } else {
-      setPhase("waitingBot");
-    }
+    resolveNextSwap(newGs, order, idx + 1, slotsData, myIdx);
   };
 
   const handlePlayerSwap = (): void => {
     const gs = gameRef.current;
     if (!gs) return;
+    const ord = swapOrderRef.current;
+    const idx = swapIdxRef.current;
+    const myIdx = mySlotRef.current;
+    const slotsData = slotsRef.current;
+
     sendWs({
       type: "swap_cards",
-      slotIndex: mySlotRef.current,
+      slotIndex: myIdx,
       count: selectedSwaps.length,
     });
-    advanceSwap(gs, swapOrderRef.current, swapIdxRef.current, selectedSwaps);
+
+    const drawn = gs.deck.slice(0, selectedSwaps.length);
+    const remainingDeck = gs.deck.slice(selectedSwaps.length);
+    const discardIds = selectedSwaps.map((c: Card) => c.id);
+    const newHand = [
+      ...gs.players[myIdx].cards.filter(
+        (c: Card) => !discardIds.includes(c.id),
+      ),
+      ...drawn,
+    ];
+    const newPlayers = gs.players.map((p: Player) =>
+      p.id === myIdx ? { ...p, cards: newHand } : p,
+    );
+    const newGs = { ...gs, players: newPlayers, deck: remainingDeck };
+    setGameSynced(newGs);
+    setSelectedSwaps([]);
+    resolveNextSwap(newGs, ord, idx + 1, slotsData, myIdx);
   };
 
   const handleSkipSwap = (): void => {
     const gs = gameRef.current;
     if (!gs) return;
     sendWs({ type: "swap_cards", slotIndex: mySlotRef.current, count: 0 });
-    advanceSwap(gs, swapOrderRef.current, swapIdxRef.current, []);
+    resolveNextSwap(
+      gs,
+      swapOrderRef.current,
+      swapIdxRef.current + 1,
+      slotsRef.current,
+      mySlotRef.current,
+    );
   };
 
   const toggleSwapCard = (card: Card): void => {
@@ -531,50 +541,71 @@ const MultiplayerRoomPage = ({ roomId, userId }: Props) => {
     });
   };
 
-  const startDealerSwap = (gs: GameState): void => {
+  // ── Dealer онцгой эрх ────────────────────────────────────────────────────
+  const startDealerSwap = (
+    gs: GameState,
+    slotsData: Slot[],
+    myIdx: number,
+  ): void => {
     const dealer = gs.players.find((p: Player) => p.id === gs.currentPlayer)!;
     if (dealer.skipped) {
-      startPlayPhase(gs);
+      startPlayPhase(gs, slotsData, myIdx);
       return;
     }
-    if (gs.currentPlayer === mySlotRef.current) {
+    if (gs.currentPlayer === myIdx) {
       setPhase("dealerSwap");
-    } else if (slotsRef.current[gs.currentPlayer]?.isBot) {
+    } else if (slotsData[gs.currentPlayer]?.isBot) {
       const sorted = [...dealer.cards].sort((a, b) => a.rank - b.rank);
-      applyDealerSwap(gs, sorted[0]);
+      sendWs({ type: "swap_cards", slotIndex: gs.currentPlayer, count: 1 });
+      const newHand = [
+        ...dealer.cards.filter((c: Card) => c.id !== sorted[0].id),
+        gs.topCard,
+      ];
+      const newPlayers = gs.players.map((p: Player) =>
+        p.id === gs.currentPlayer ? { ...p, cards: newHand } : p,
+      );
+      const newGs = { ...gs, players: newPlayers };
+      setGameSynced(newGs);
+      startPlayPhase(newGs, slotsData, myIdx);
     } else {
+      // Dealer нь өөр хүн тоглогч — хүлээнэ
       setPhase("waitingBot");
     }
-  };
-
-  const applyDealerSwap = (gs: GameState, toDiscard: Card): void => {
-    const dealer = gs.players.find((p: Player) => p.id === gs.currentPlayer)!;
-    const newHand = [
-      ...dealer.cards.filter((c: Card) => c.id !== toDiscard.id),
-      gs.topCard,
-    ];
-    const newPlayers = gs.players.map((p: Player) =>
-      p.id === gs.currentPlayer ? { ...p, cards: newHand } : p,
-    );
-    setGameSynced({ ...gs, players: newPlayers });
-    startPlayPhase({ ...gs, players: newPlayers });
   };
 
   const handleDealerSwap = (card: Card): void => {
     const gs = gameRef.current;
     if (!gs) return;
-    sendWs({ type: "swap_cards", slotIndex: mySlotRef.current, count: 1 });
-    applyDealerSwap(gs, card);
+    const myIdx = mySlotRef.current;
+    const slotsData = slotsRef.current;
+
+    sendWs({ type: "swap_cards", slotIndex: myIdx, count: 1 });
+
+    const newHand = [
+      ...gs.players[myIdx].cards.filter((c: Card) => c.id !== card.id),
+      gs.topCard,
+    ];
+    const newPlayers = gs.players.map((p: Player) =>
+      p.id === myIdx ? { ...p, cards: newHand } : p,
+    );
+    const newGs = { ...gs, players: newPlayers };
+    setGameSynced(newGs);
+    startPlayPhase(newGs, slotsData, myIdx);
   };
 
   const handleDealerSkipSwap = (): void => {
     const gs = gameRef.current;
     if (!gs) return;
     sendWs({ type: "swap_cards", slotIndex: mySlotRef.current, count: 0 });
-    startPlayPhase(gs);
+    startPlayPhase(gs, slotsRef.current, mySlotRef.current);
   };
 
-  const startPlayPhase = (gs: GameState): void => {
+  // ── 3-р шат: Тоглолт ─────────────────────────────────────────────────────
+  const startPlayPhase = (
+    gs: GameState,
+    slotsData: Slot[],
+    myIdx: number,
+  ): void => {
     const entered = orderFrom(nextId(gs.currentPlayer)).filter(
       (pid: number) => !gs.players.find((p: Player) => p.id === pid)!.skipped,
     );
@@ -590,15 +621,7 @@ const MultiplayerRoomPage = ({ roomId, userId }: Props) => {
     setSelectedPlay(null);
     setMessage("");
 
-    const first = entered[0];
-    if (first === mySlotRef.current) {
-      setPhase("playing");
-    } else if (slotsRef.current[first]?.isBot) {
-      setPhase("waitingBot");
-      setTimeout(() => botPlay(gs, entered, 0, null), 800);
-    } else {
-      setPhase("waitingBot");
-    }
+    resolveNextPlay(gs, entered, 0, null as unknown as Trick, slotsData, myIdx);
   };
 
   const legalCards = (
@@ -630,23 +653,16 @@ const MultiplayerRoomPage = ({ roomId, userId }: Props) => {
     order: number[],
     idx: number,
     trick: Trick | null,
+    slotsData: Slot[],
+    myIdx: number,
   ): void => {
     const playerId = order[idx];
     const player = gs.players.find((p) => p.id === playerId)!;
     const legal = legalCards(player, trick, gs, idx, order.length);
     const card = [...legal].sort((a, b) => b.rank - a.rank)[0];
-    processPlay(gs, order, idx, trick, card, false);
-  };
 
-  const processPlay = (
-    gs: GameState,
-    order: number[],
-    idx: number,
-    trick: Trick | null,
-    card: Card,
-    isMe: boolean,
-  ): void => {
-    const playerId = order[idx];
+    sendWs({ type: "play_card", slotIndex: playerId, card });
+
     const newPlayers = gs.players.map((p) =>
       p.id === playerId
         ? { ...p, cards: p.cards.filter((c) => c.id !== card.id) }
@@ -660,57 +676,60 @@ const MultiplayerRoomPage = ({ roomId, userId }: Props) => {
     currentTrickRef.current = newTrick;
     setGameSynced(newGs);
     setCurrentTrick(newTrick);
-    setSelectedPlay(null);
 
-    const nextIdx = idx + 1;
-    if (nextIdx >= order.length) {
-      setTimeout(() => resolveTrick(newGs, newTrick, order), 600);
-      return;
-    }
-
-    setCurrentPlayIdxSynced(nextIdx);
-    const nextPid = order[nextIdx];
-    if (nextPid === mySlotRef.current) {
-      setPhase("playing");
-    } else if (slotsRef.current[nextPid]?.isBot) {
-      setPhase("waitingBot");
-      setTimeout(() => botPlay(newGs, order, nextIdx, newTrick), 800);
-    } else {
-      setPhase("waitingBot");
-    }
+    resolveNextPlay(newGs, order, idx + 1, newTrick, slotsData, myIdx);
   };
 
   const handlePlayerPlay = (): void => {
     const gs = gameRef.current;
     if (!gs || !selectedPlay || phase !== "playing") return;
-    const legal = legalCards(
-      gs.players[mySlotRef.current],
-      currentTrickRef.current,
-      gs,
-      currentPlayIdxRef.current,
-      playOrderRef.current.length,
-    );
+    const myIdx = mySlotRef.current;
+    const slotsData = slotsRef.current;
+    const ord = playOrderRef.current;
+    const idx = currentPlayIdxRef.current;
+    const trick = currentTrickRef.current;
+
+    const legal = legalCards(gs.players[myIdx], trick, gs, idx, ord.length);
     if (!legal.find((c) => c.id === selectedPlay.id)) {
       setMessage("⚠️ Энэ картыг тоглох боломжгүй!");
       return;
     }
     setMessage("");
-    sendWs({
-      type: "play_card",
-      slotIndex: mySlotRef.current,
-      card: selectedPlay,
-    });
-    processPlay(
-      gs,
-      playOrderRef.current,
-      currentPlayIdxRef.current,
-      currentTrickRef.current,
-      selectedPlay,
-      true,
+    sendWs({ type: "play_card", slotIndex: myIdx, card: selectedPlay });
+
+    const newPlayers = gs.players.map((p) =>
+      p.id === myIdx
+        ? { ...p, cards: p.cards.filter((c) => c.id !== selectedPlay.id) }
+        : p,
     );
+    const newTrick: Trick = trick
+      ? {
+          ...trick,
+          plays: [...trick.plays, { playerId: myIdx, card: selectedPlay }],
+        }
+      : {
+          leadCard: selectedPlay,
+          leadPlayer: myIdx,
+          plays: [{ playerId: myIdx, card: selectedPlay }],
+        };
+
+    const newGs = { ...gs, players: newPlayers };
+    currentTrickRef.current = newTrick;
+    setGameSynced(newGs);
+    setCurrentTrick(newTrick);
+    setSelectedPlay(null);
+
+    resolveNextPlay(newGs, ord, idx + 1, newTrick, slotsData, myIdx);
   };
 
-  const resolveTrick = (gs: GameState, trick: Trick, order: number[]): void => {
+  // ── Гэрийн хожигч ────────────────────────────────────────────────────────
+  const resolveTrick = (
+    gs: GameState,
+    trick: Trick,
+    order: number[],
+    slotsData: Slot[],
+    myIdx: number,
+  ): void => {
     const trumpPlays = trick.plays.filter((p) => p.card.suit === gs.trumpSuit);
     const leadPlays = trick.plays.filter(
       (p) => p.card.suit === trick.leadCard.suit,
@@ -727,13 +746,13 @@ const MultiplayerRoomPage = ({ roomId, userId }: Props) => {
     setGameSynced(newGs);
 
     const winnerName =
-      slotsRef.current[winner.playerId]?.username ??
-      PLAYER_LABELS[winner.playerId];
+      slotsData[winner.playerId]?.username ?? PLAYER_LABELS[winner.playerId];
     setMessage(`🏠 ${winnerName} гэр авлаа!`);
 
     const allEmpty = newGs.players
       .filter((p) => !p.skipped)
       .every((p) => p.cards.length === 0);
+
     if (allEmpty) {
       setTimeout(() => endRound(newGs), 1000);
     } else {
@@ -746,16 +765,14 @@ const MultiplayerRoomPage = ({ roomId, userId }: Props) => {
         currentTrickRef.current = null;
         setCurrentTrick(null);
         setSelectedPlay(null);
-
-        const first = newOrder[0];
-        if (first === mySlotRef.current) {
-          setPhase("playing");
-        } else if (slotsRef.current[first]?.isBot) {
-          setPhase("waitingBot");
-          setTimeout(() => botPlay(newGs, newOrder, 0, null), 800);
-        } else {
-          setPhase("waitingBot");
-        }
+        resolveNextPlay(
+          newGs,
+          newOrder,
+          0,
+          null as unknown as Trick,
+          slotsData,
+          myIdx,
+        );
       }, 1200);
     }
   };
@@ -768,6 +785,7 @@ const MultiplayerRoomPage = ({ roomId, userId }: Props) => {
     sendWs({ type: "end_round", slotIndex: mySlotRef.current, tricksWon });
   };
 
+  // ── Render ────────────────────────────────────────────────────────────────
   if (!game) {
     return (
       <div className="flex h-screen items-center justify-center bg-slate-900 text-white text-xl">
@@ -796,7 +814,7 @@ const MultiplayerRoomPage = ({ roomId, userId }: Props) => {
   const slotLabels =
     slots.length > 0
       ? slots.map((s) => s.username || PLAYER_LABELS[s.slotIndex])
-      : PLAYER_LABELS;
+      : Array.from({ length: 5 }, (_, i) => PLAYER_LABELS[i]);
 
   return (
     <div className="relative h-[100dvh] w-full bg-slate-900 text-white overflow-hidden select-none">
