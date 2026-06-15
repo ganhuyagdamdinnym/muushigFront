@@ -26,12 +26,19 @@ type Props = {
   onSelectPlayCard: (card: Card) => void;
 };
 
+// Responsive positions for 5 players around the table
+// Each entry: [mobile classes, desktop (sm+) overrides handled via responsive classes]
 const PLAYER_POSITIONS = [
-  "bottom-4 left-1/2 -translate-x-1/2", // 0: Та (доод төв)
-  "top-1/2 left-4", // 1: Bot 1
-  "top-4 left-1/4 -translate-x-1/2", // 2: Bot 2
-  "top-4 right-1/4 translate-x-1/2", // 3: Bot 3
-  "top-1/2 right-4", // 4: Bot 4
+  // 0: Та — bottom center (human player)
+  "bottom-2 sm:bottom-4 left-1/2 -translate-x-1/2",
+  // 1: Bot 1 — left middle
+  "top-1/2 -translate-y-1/2 left-1 sm:left-4",
+  // 2: Bot 2 — top left
+  "top-14 sm:top-4 left-1/4 -translate-x-1/2",
+  // 3: Bot 3 — top right
+  "top-14 sm:top-4 right-1/4 translate-x-1/2",
+  // 4: Bot 4 — right middle
+  "top-1/2 -translate-y-1/2 right-1 sm:right-4",
 ];
 
 const PlayerArea = ({
@@ -68,55 +75,64 @@ const PlayerArea = ({
       {game.players.map((player) => {
         const isDealer = player.id === game.currentPlayer;
         const isCurrent = isCurrentPlayer(player);
+        const isMe = player.id === mySlotIndex;
+
+        // Card size: smaller on mobile, normal on sm+
+        const cardW = isMe ? "w-10 sm:w-14" : "w-8 sm:w-11";
+        const cardH = isMe ? "h-14 sm:h-20" : "h-12 sm:h-16";
 
         return (
           <div
             key={player.id}
-            className={`absolute flex flex-col items-center gap-1 ${PLAYER_POSITIONS[player.id]} transition-all z-10
+            className={`absolute flex flex-col items-center gap-0.5 sm:gap-1 ${PLAYER_POSITIONS[player.id]} transition-all z-10
               ${isCurrent ? "scale-105" : player.skipped ? "opacity-30" : "opacity-70"}
             `}
           >
             {/* Player label */}
             <div
-              className={`text-xs font-bold flex items-center gap-1 ${
+              className={`text-[9px] sm:text-xs font-bold flex flex-wrap items-center justify-center gap-0.5 sm:gap-1 max-w-[70px] sm:max-w-none ${
                 isCurrent ? "text-yellow-400" : "text-white"
               }`}
             >
-              {slotLabels ? slotLabels[player.id] : PLAYER_LABELS[player.id]}
-              {player.id === mySlotIndex ? " (Та)" : ""}
+              <span className="truncate max-w-[60px] sm:max-w-none">
+                {slotLabels ? slotLabels[player.id] : PLAYER_LABELS[player.id]}
+                {isMe ? " (Та)" : ""}
+              </span>
               {isDealer && (
-                <span className="text-purple-400 text-[10px]">dealer</span>
+                <span className="text-purple-400 text-[8px] sm:text-[10px]">
+                  D
+                </span>
               )}
               {player.skipped && (
-                <span className="text-red-500 text-[10px]">өнжсөн</span>
+                <span className="text-red-500 text-[8px] sm:text-[10px]">
+                  ✗
+                </span>
               )}
-              <span className="text-gray-400 text-[10px]">
-                [{player.score}оноо / {player.tricksWon}гэр]
+              <span className="text-gray-400 text-[8px] sm:text-[10px] whitespace-nowrap">
+                {player.score}оноо
               </span>
             </div>
 
             {/* Cards */}
-            <div className="flex -space-x-5">
+            <div className="flex -space-x-3 sm:-space-x-5">
               {player.cards.map((card) => {
                 const isSelected =
                   (phase === "swap" &&
-                    player.id === mySlotIndex &&
+                    isMe &&
                     !!selectedSwaps.find((c) => c.id === card.id)) ||
                   (phase === "dealerSwap" &&
-                    player.id === mySlotIndex &&
+                    isMe &&
                     selectedPlay?.id === card.id) ||
-                  (phase === "playing" &&
-                    player.id === mySlotIndex &&
-                    selectedPlay?.id === card.id);
+                  (phase === "playing" && isMe && selectedPlay?.id === card.id);
 
                 const isIllegal =
                   phase === "playing" &&
-                  player.id === mySlotIndex &&
+                  isMe &&
                   legalIds.size > 0 &&
                   !legalIds.has(card.id);
 
                 const isClickable =
-                  player.id === mySlotIndex &&
+                  isMe &&
                   (phase === "swap" ||
                     phase === "dealerSwap" ||
                     (phase === "playing" &&
@@ -125,19 +141,15 @@ const PlayerArea = ({
                 return (
                   <img
                     key={card.id}
-                    src={
-                      player.id === mySlotIndex
-                        ? `/${card.image}`
-                        : "/card_back.png"
-                    }
-                    alt={player.id === mySlotIndex ? card.name : "card"}
-                    className={`w-14 h-20 rounded shadow-md border transition-all
-                      ${isSelected ? "-translate-y-4 border-cyan-400 border-2" : "border-slate-700"}
+                    src={isMe ? `/${card.image}` : "/card_back.png"}
+                    alt={isMe ? card.name : "card"}
+                    className={`${cardW} ${cardH} rounded shadow-md border transition-all
+                      ${isSelected ? "-translate-y-3 sm:-translate-y-4 border-cyan-400 border-2" : "border-slate-700"}
                       ${isIllegal ? "opacity-30 cursor-not-allowed grayscale" : ""}
-                      ${isClickable ? "cursor-pointer hover:-translate-y-2" : ""}
+                      ${isClickable && !isIllegal ? "cursor-pointer hover:-translate-y-1 sm:hover:-translate-y-2 active:scale-95" : ""}
                     `}
                     onClick={() => {
-                      if (!isClickable) return;
+                      if (!isClickable || isIllegal) return;
                       if (phase === "swap") {
                         onToggleSwapCard(card);
                       } else {
