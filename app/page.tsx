@@ -45,9 +45,6 @@ export default function Home() {
           <div className="flex justify-center w-full">
             <ButtonDemo />
           </div>
-          <button className="w-full py-2.5 px-4 bg-slate-800 hover:bg-slate-700 active:bg-slate-800 text-slate-200 hover:text-white font-medium text-sm rounded-xl transition-colors border border-slate-700/50">
-            Хүмүүстэй тоглох
-          </button>
         </div>
       </div>
     </div>
