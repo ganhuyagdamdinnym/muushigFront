@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { useRouter } from "next/navigation";
 
 interface SideBarProps {
   currentUsername: string;
@@ -15,6 +16,8 @@ export const SideBar = ({
 }: SideBarProps) => {
   const [isEditing, setIsEditing] = useState(false);
   const [inputName, setInputName] = useState(currentUsername);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const router = useRouter();
 
   const handleSave = () => {
     if (inputName.trim() === "") return;
@@ -30,6 +33,13 @@ export const SideBar = ({
     }
   };
 
+  const handleLogout = () => {
+    localStorage.removeItem("user_id");
+    localStorage.removeItem("username");
+    setSidebarOpen(false);
+    router.push("/pages/login");
+  };
+
   return (
     <>
       {/* Backdrop */}
@@ -38,11 +48,11 @@ export const SideBar = ({
         onClick={() => setSidebarOpen(false)}
       />
 
-      {/* Sidebar panel — full width on mobile, fixed 320px on sm+ */}
+      {/* Sidebar panel */}
       <div className="fixed top-0 right-0 bottom-0 w-full sm:w-80 bg-slate-900 border-l border-slate-800 text-slate-300 z-50 p-5 sm:p-6 shadow-2xl flex flex-col justify-between animate-in slide-in-from-right duration-200">
-        <div>
+        <div className="flex flex-col gap-4">
           {/* Header */}
-          <div className="flex justify-between items-center mb-6 sm:mb-8">
+          <div className="flex justify-between items-center">
             <h3 className="text-base sm:text-lg font-bold text-white tracking-wide">
               Профайл Тохиргоо
             </h3>
@@ -103,6 +113,43 @@ export const SideBar = ({
                   ✏️ Засах
                 </button>
               </div>
+            )}
+          </div>
+
+          {/* Logout section */}
+          <div className="bg-slate-800/40 border border-slate-800/80 rounded-2xl p-4 sm:p-5">
+            <label className="text-[11px] sm:text-xs font-semibold text-slate-500 uppercase tracking-wider block mb-3">
+              Бүртгэл
+            </label>
+
+            {showLogoutConfirm ? (
+              <div className="space-y-2">
+                <p className="text-xs text-slate-400 text-center">
+                  Гарахдаа итгэлтэй байна уу?
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleLogout}
+                    className="flex-1 py-2.5 bg-red-600 hover:bg-red-500 active:bg-red-700 text-white font-medium text-xs rounded-lg transition-colors"
+                  >
+                    Тийм, гарах
+                  </button>
+                  <button
+                    onClick={() => setShowLogoutConfirm(false)}
+                    className="px-3 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium text-xs rounded-lg transition-colors"
+                  >
+                    Үгүй
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                onClick={() => setShowLogoutConfirm(true)}
+                className="w-full py-2.5 px-4 bg-slate-800 hover:bg-red-900/40 active:bg-red-900/60 border border-slate-700 hover:border-red-700/50 text-slate-300 hover:text-red-400 font-medium text-xs rounded-xl transition-all flex items-center justify-center gap-2"
+              >
+                <span>🚪</span>
+                <span>Гарах</span>
+              </button>
             )}
           </div>
         </div>
