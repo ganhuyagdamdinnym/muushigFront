@@ -247,15 +247,15 @@ const MultiplayerRoomPage = ({ roomId, userId }: Props) => {
       const slotIdx = msg.slotIndex as number;
       const joining = msg.joining as boolean;
 
-      // Энэ тоглогчийн шийдвэрийг тусгана
+      // Өөрийн болон bot-ын шийдвэр local-д аль хэдийн тооцсон тул WS echo-г үл тооцно
+      // Зөвхөн өөр хүн тоглогчийн мессежийг боловсруулна
+      if (slotIdx === myIdx || slotsData[slotIdx]?.isBot) return;
+
       const newPlayers = gs.players.map((p: Player) =>
         p.id === slotIdx ? { ...p, skipped: !joining } : p,
       );
       const newGs = { ...gs, players: newPlayers };
       setGameSynced(newGs);
-
-      // Өөрийн шийдвэр бол WS-ээр ирэхийг хүлээлгүй аль хэдийн davshsan тул давхардахгүйн тулд skip
-      if (slotIdx === myIdx) return;
 
       const ord = decideOrderRef.current;
       const curIdx = ord.indexOf(slotIdx);
@@ -265,13 +265,12 @@ const MultiplayerRoomPage = ({ roomId, userId }: Props) => {
       const count = msg.count as number;
       const slotIdx = msg.slotIndex as number;
 
-      // Картын тоог deck-ээс хасна (зөвхөн тоо мэддэг, ямар карт мэддэггүй)
+      // Зөвхөн өөр хүн тоглогчийн swap мессежийг боловсруулна
+      if (slotIdx === myIdx || slotsData[slotIdx]?.isBot) return;
+
       const newDeck = gs.deck.slice(count);
       const newGs = { ...gs, deck: newDeck };
       setGameSynced(newGs);
-
-      // Өөрийн swap бол аль хэдийн davshsan
-      if (slotIdx === myIdx) return;
 
       const swapOrd = swapOrderRef.current;
       const curIdx = swapOrd.indexOf(slotIdx);
@@ -280,6 +279,9 @@ const MultiplayerRoomPage = ({ roomId, userId }: Props) => {
       if (!gs) return;
       const slotIdx = msg.slotIndex as number;
       const card = msg.card as Card;
+
+      // Зөвхөн өөр хүн тоглогчийн карт тоглосон мессежийг боловсруулна
+      if (slotIdx === myIdx || slotsData[slotIdx]?.isBot) return;
 
       const newPlayers = gs.players.map((p: Player) =>
         p.id === slotIdx
@@ -303,9 +305,6 @@ const MultiplayerRoomPage = ({ roomId, userId }: Props) => {
       currentTrickRef.current = newTrick;
       setCurrentTrick(newTrick);
       setGameSynced(newGs);
-
-      // Өөрийн карт бол аль хэдийн davshsan
-      if (slotIdx === myIdx) return;
 
       const playOrd = playOrderRef.current;
       const curIdx = playOrd.indexOf(slotIdx);
