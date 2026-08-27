@@ -56,7 +56,7 @@ const GameHeader = ({ game, phase, message }: Props) => {
       {/* Голын мэдээлэл */}
       <div className="flex flex-col items-center pointer-events-none">
         <h1 className="text-lg sm:text-2xl font-bold text-green-400 tracking-wide leading-none">
-          Муушиг Тоглоом
+          Муушиг тоглоом
         </h1>
         <p className="text-[10px] sm:text-xs text-yellow-400 mt-0.5 font-semibold">
           {phaseLabel(phase)}
