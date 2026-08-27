@@ -72,7 +72,7 @@ const MultiplayerRoomPage = ({ roomId, userId }: Props) => {
   const [selectedPlay, setSelectedPlay] = useState<Card | null>(null);
   const [wsConnected, setWsConnected] = useState(false);
 
-  const WS_URL = process.env.NEXT_PUBLIC_WS_URL;
+  const WS_URL = "wss://muushig-back-end.onrender.com"
 
   // ── Ref+State хамт тохируулах хэрэгслүүд ────────────────────────────────
   const setGameSynced = (gs: GameState) => {

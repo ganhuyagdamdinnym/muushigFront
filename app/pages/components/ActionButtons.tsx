@@ -21,6 +21,8 @@ type Props = {
   onDealerSwap: (card: Card) => void;
   onDealerSkipSwap: () => void;
   onPlay: () => void;
+  // 🔊 Дуу
+  onSound?: (type: "click" | "swap" | "card" | "discard") => void;
 };
 
 const ActionButtons = ({
@@ -42,9 +44,14 @@ const ActionButtons = ({
   onDealerSwap,
   onDealerSkipSwap,
   onPlay,
+  onSound,
 }: Props) => {
+  const sound = (type: "click" | "swap" | "card" | "discard") =>
+    onSound?.(type);
+
   return (
     <div className="absolute bottom-20 sm:bottom-28 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1.5 sm:gap-2 z-20 w-full px-4 max-w-sm sm:max-w-none">
+
       {/* 1-р шат: Орох/өнжих */}
       {phase === "decide" && decideOrder[decideIdx] === mySlotIndex && (
         <div className="flex flex-col items-center gap-1.5 sm:gap-2">
@@ -53,13 +60,13 @@ const ActionButtons = ({
           </p>
           <div className="flex gap-2 sm:gap-3">
             <button
-              onClick={() => onJoin(true)}
+              onClick={() => { sound("click"); onJoin(true); }}
               className="bg-green-600 hover:bg-green-500 active:bg-green-700 text-white font-bold px-4 sm:px-6 py-1.5 sm:py-2 rounded-full shadow-lg transition text-sm sm:text-base"
             >
               ✅ Орно
             </button>
             <button
-              onClick={() => onJoin(false)}
+              onClick={() => { sound("discard"); onJoin(false); }}
               className="bg-slate-600 hover:bg-slate-500 active:bg-slate-700 text-white font-bold px-4 sm:px-6 py-1.5 sm:py-2 rounded-full shadow-lg transition text-sm sm:text-base"
             >
               ⏭ Өнжинө
@@ -77,14 +84,14 @@ const ActionButtons = ({
           </p>
           <div className="flex gap-2 sm:gap-3">
             <button
-              onClick={onSwap}
+              onClick={() => { sound("swap"); onSwap(); }}
               disabled={selectedSwaps.length === 0}
               className="bg-blue-600 hover:bg-blue-500 active:bg-blue-700 disabled:opacity-40 text-white font-bold px-4 sm:px-5 py-1.5 sm:py-2 rounded-full shadow-lg transition text-xs sm:text-sm"
             >
               ✅ Солих
             </button>
             <button
-              onClick={onSkipSwap}
+              onClick={() => { sound("click"); onSkipSwap(); }}
               className="bg-slate-600 hover:bg-slate-500 active:bg-slate-700 text-white font-bold px-4 sm:px-5 py-1.5 sm:py-2 rounded-full shadow-lg transition text-xs sm:text-sm"
             >
               ⏭ Дамжуулах
@@ -102,14 +109,14 @@ const ActionButtons = ({
           </p>
           <div className="flex gap-2 sm:gap-3">
             <button
-              onClick={() => selectedPlay && onDealerSwap(selectedPlay)}
+              onClick={() => { if (selectedPlay) { sound("swap"); onDealerSwap(selectedPlay); } }}
               disabled={!selectedPlay}
               className="bg-purple-600 hover:bg-purple-500 active:bg-purple-700 disabled:opacity-40 text-white font-bold px-4 sm:px-5 py-1.5 sm:py-2 rounded-full shadow-lg transition text-xs sm:text-sm"
             >
               🔄 Солих
             </button>
             <button
-              onClick={onDealerSkipSwap}
+              onClick={() => { sound("click"); onDealerSkipSwap(); }}
               className="bg-slate-600 hover:bg-slate-500 active:bg-slate-700 text-white font-bold px-4 sm:px-5 py-1.5 sm:py-2 rounded-full shadow-lg transition text-xs sm:text-sm"
             >
               ⏭ Авахгүй
@@ -129,7 +136,7 @@ const ActionButtons = ({
                 : "Тоглох картаа сонгоно уу"}
             </p>
             <button
-              onClick={onPlay}
+              onClick={() => { sound("card"); onPlay(); }}
               disabled={!selectedPlay}
               className="bg-green-600 hover:bg-green-500 active:bg-green-700 disabled:opacity-40 text-white font-bold px-5 sm:px-6 py-1.5 sm:py-2 rounded-full shadow-lg transition text-sm sm:text-base"
             >

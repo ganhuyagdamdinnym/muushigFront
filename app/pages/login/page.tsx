@@ -8,7 +8,9 @@ type AuthMode = "signin" | "signup";
 export default function LoginPage() {
   const [mode, setMode] = useState<AuthMode>("signin");
   const router = useRouter();
-  const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL;
+  const API_URL = "https://muushig-back-end.onrender.com"
+//   NEXT_PUBLIC_BACKEND_URL=https://muushig-back-end.onrender.com
+// NEXT_PUBLIC_WS_URL=wss://muushig-back-end.onrender.com
 
   // Form-ын state-үүд
   const [username, setUsername] = useState("");

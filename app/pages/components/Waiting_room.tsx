@@ -29,8 +29,8 @@ const WaitingRoom = ({ roomId, userId, username }: Props) => {
   const [error, setError] = useState<string>("");
   const wsRef = useRef<WebSocket | null>(null);
 
-  const WS_URL = process.env.NEXT_PUBLIC_WS_URL;
-  const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL;
+  const WS_URL = "wss://muushig-back-end.onrender.com"
+  const BACKEND_URL = "https://muushig-back-end.onrender.com"
 
   const ws = new WebSocket(
     "wss://muushig-back-end.onrender.com/real_room/test/ws/test",

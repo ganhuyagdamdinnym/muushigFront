@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import CardsData from "../../assistent/cards.json";
+import { useSounds } from "../../assistent/useSounds"
 
 import {
   Card,
@@ -19,8 +20,6 @@ import CenterArea from "../../pages/components/CenterArea";
 import ActionButtons from "../../pages/components/ActionButtons";
 import ScoreTable from "../../pages/components/ScoreTable";
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
 const nextId = (id: number): number => (id === 4 ? 0 : id + 1);
 
 const orderFrom = (start: number): number[] => {
@@ -33,29 +32,32 @@ const orderFrom = (start: number): number[] => {
   return arr;
 };
 
-// ── Component ────────────────────────────────────────────────────────────────
-
 const RoomPage = () => {
   const params = useParams();
   const id = Array.isArray(params.id) ? params.id[0] : params.id;
 
+  const {
+    playCardSound,
+    playSwapSound,
+    playDiscardSound,
+    playTrickWinSound,
+    playClickSound,
+  } = useSounds();
+
   const [game, setGame] = useState<GameState | null>(null);
   const [phase, setPhase] = useState<Phase>("waitingBot");
-
   const [decideOrder, setDecideOrder] = useState<number[]>([]);
   const [decideIdx, setDecideIdx] = useState(0);
-
   const [swapOrder, setSwapOrder] = useState<number[]>([]);
   const [swapIdx, setSwapIdx] = useState(0);
   const [selectedSwaps, setSelectedSwaps] = useState<Card[]>([]);
-
   const [currentTrick, setCurrentTrick] = useState<Trick | null>(null);
   const [currentPlayIdx, setCurrentPlayIdx] = useState<number>(0);
   const [playOrder, setPlayOrder] = useState<number[]>([]);
   const [selectedPlay, setSelectedPlay] = useState<Card | null>(null);
   const [message, setMessage] = useState<string>("");
 
-  const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL;
+  const API_URL = "https://muushig-back-end.onrender.com";
 
   useEffect(() => {
     const mapCard = (cardId: number): Card =>
@@ -65,46 +67,15 @@ const RoomPage = () => {
       try {
         const res = await fetch(`${API_URL}/room/${id}`);
         const data = await res.json();
-        console.log("Fetched room data:", data);
         const round = data.round;
         const dealer: number = round.currentPlayer;
 
         const players: Player[] = [
-          {
-            id: 0,
-            cards: round.playerCards.map(mapCard),
-            score: round.playersPoints.player,
-            skipped: false,
-            tricksWon: 0,
-          },
-          {
-            id: 1,
-            cards: round.bot1Cards.map(mapCard),
-            score: round.playersPoints.bot1,
-            skipped: false,
-            tricksWon: 0,
-          },
-          {
-            id: 2,
-            cards: round.bot2Cards.map(mapCard),
-            score: round.playersPoints.bot2,
-            skipped: false,
-            tricksWon: 0,
-          },
-          {
-            id: 3,
-            cards: round.bot3Cards.map(mapCard),
-            score: round.playersPoints.bot3,
-            skipped: false,
-            tricksWon: 0,
-          },
-          {
-            id: 4,
-            cards: round.bot4Cards.map(mapCard),
-            score: round.playersPoints.bot4,
-            skipped: false,
-            tricksWon: 0,
-          },
+          { id: 0, cards: round.playerCards.map(mapCard), score: round.playersPoints.player, skipped: false, tricksWon: 0 },
+          { id: 1, cards: round.bot1Cards.map(mapCard), score: round.playersPoints.bot1, skipped: false, tricksWon: 0 },
+          { id: 2, cards: round.bot2Cards.map(mapCard), score: round.playersPoints.bot2, skipped: false, tricksWon: 0 },
+          { id: 3, cards: round.bot3Cards.map(mapCard), score: round.playersPoints.bot3, skipped: false, tricksWon: 0 },
+          { id: 4, cards: round.bot4Cards.map(mapCard), score: round.playersPoints.bot4, skipped: false, tricksWon: 0 },
         ];
 
         const topCard = mapCard(round.topCard);
@@ -117,7 +88,6 @@ const RoomPage = () => {
         };
 
         setGame(gs);
-
         const order = orderFrom(nextId(dealer));
         setDecideOrder(order);
         setDecideIdx(0);
@@ -146,21 +116,13 @@ const RoomPage = () => {
     const enteredCount = gs.players.filter((p: Player) => !p.skipped).length;
     const remaining = order.length - idx;
     const autoJoin = enteredCount === 0 && remaining <= 2;
-    const trumpCards = player.cards.filter(
-      (c: Card) => c.suit === gs.trumpSuit,
-    );
+    const trumpCards = player.cards.filter((c: Card) => c.suit === gs.trumpSuit);
     const highCards = player.cards.filter((c: Card) => c.rank >= 11);
-    const shouldJoin =
-      autoJoin || trumpCards.length >= 1 || highCards.length >= 2;
+    const shouldJoin = autoJoin || trumpCards.length >= 1 || highCards.length >= 2;
     advanceDecide(gs, order, idx, shouldJoin);
   };
 
-  const advanceDecide = (
-    gs: GameState,
-    order: number[],
-    idx: number,
-    joining: boolean,
-  ): void => {
+  const advanceDecide = (gs: GameState, order: number[], idx: number, joining: boolean): void => {
     const playerId = order[idx];
     const newPlayers = gs.players.map((p: Player) =>
       p.id === playerId ? { ...p, skipped: !joining } : p,
@@ -176,7 +138,6 @@ const RoomPage = () => {
 
     setDecideIdx(nextIdx);
     const nextPlayerId = order[nextIdx];
-
     if (nextPlayerId === 0) {
       setPhase("decide");
     } else {
@@ -187,6 +148,7 @@ const RoomPage = () => {
 
   const handlePlayerJoin = (joining: boolean): void => {
     if (!game) return;
+    playClickSound(); // 🔊 Орох/өнжих дуу
     advanceDecide(game, decideOrder, decideIdx, joining);
   };
 
@@ -227,7 +189,6 @@ const RoomPage = () => {
     const sorted = [...player.cards]
       .filter((c: Card) => c.suit !== gs.trumpSuit)
       .sort((a: Card, b: Card) => a.rank - b.rank);
-
     const swapCount = Math.min(
       Math.floor(Math.random() * Math.min(sorted.length, maxSwap)) + 1,
       maxSwap,
@@ -235,12 +196,7 @@ const RoomPage = () => {
     advanceSwap(gs, order, idx, sorted.slice(0, swapCount));
   };
 
-  const advanceSwap = (
-    gs: GameState,
-    order: number[],
-    idx: number,
-    toDiscard: Card[],
-  ): void => {
+  const advanceSwap = (gs: GameState, order: number[], idx: number, toDiscard: Card[]): void => {
     const playerId = order[idx];
     const player = gs.players.find((p: Player) => p.id === playerId)!;
     const drawn = gs.deck.slice(0, toDiscard.length);
@@ -250,7 +206,6 @@ const RoomPage = () => {
       ...player.cards.filter((c: Card) => !discardIds.includes(c.id)),
       ...drawn,
     ];
-
     const newPlayers = gs.players.map((p: Player) =>
       p.id === playerId ? { ...p, cards: newHand } : p,
     );
@@ -266,7 +221,6 @@ const RoomPage = () => {
 
     setSwapIdx(nextIdx);
     const nextPlayerId = order[nextIdx];
-
     if (nextPlayerId === 0) {
       setPhase("swap");
     } else {
@@ -277,11 +231,13 @@ const RoomPage = () => {
 
   const handlePlayerSwap = (): void => {
     if (!game) return;
+    playSwapSound(); // 🔊 Карт солих дуу
     advanceSwap(game, swapOrder, swapIdx, selectedSwaps);
   };
 
   const handleSkipSwap = (): void => {
     if (!game) return;
+    playClickSound(); // 🔊 Дамжуулах дуу
     advanceSwap(game, swapOrder, swapIdx, []);
   };
 
@@ -290,8 +246,12 @@ const RoomPage = () => {
     const maxSwap = Math.min(game.deck.length, game.players[0].cards.length);
     setSelectedSwaps((prev: Card[]) => {
       const exists = prev.find((c: Card) => c.id === card.id);
-      if (exists) return prev.filter((c: Card) => c.id !== card.id);
+      if (exists) {
+        playDiscardSound(); // 🔊 Сонголтоос хасах
+        return prev.filter((c: Card) => c.id !== card.id);
+      }
       if (prev.length >= maxSwap) return prev;
+      playCardSound(); // 🔊 Карт сонгох
       return [...prev, card];
     });
   };
@@ -307,9 +267,7 @@ const RoomPage = () => {
     if (gs.currentPlayer === 0) {
       setPhase("dealerSwap");
     } else {
-      const sorted = [...dealer.cards].sort(
-        (a: Card, b: Card) => a.rank - b.rank,
-      );
+      const sorted = [...dealer.cards].sort((a: Card, b: Card) => a.rank - b.rank);
       applyDealerSwap(gs, sorted[0]);
     }
   };
@@ -330,11 +288,13 @@ const RoomPage = () => {
 
   const handleDealerSwap = (card: Card): void => {
     if (!game) return;
+    playSwapSound(); // 🔊 Dealer солих дуу
     applyDealerSwap(game, card);
   };
 
   const handleDealerSkipSwap = (): void => {
     if (!game) return;
+    playClickSound();
     startPlayPhase(game);
   };
 
@@ -344,7 +304,6 @@ const RoomPage = () => {
     const entered = orderFrom(nextId(gs.currentPlayer)).filter(
       (pid) => !gs.players.find((p: Player) => p.id === pid)!.skipped,
     );
-
     if (entered.length === 0) {
       endRound(gs);
       return;
@@ -372,32 +331,24 @@ const RoomPage = () => {
     totalInTrick: number,
   ): Card[] => {
     if (!trick) return player.cards;
-
     const lead = trick.leadCard;
     const isLastPlayer = positionInTrick === totalInTrick - 1;
     const samesuit = player.cards.filter((c: Card) => c.suit === lead.suit);
     const higher = samesuit.filter((c: Card) => c.rank > lead.rank);
     const trump = player.cards.filter((c: Card) => c.suit === gs.trumpSuit);
     const leadIsTrump = lead.suit === gs.trumpSuit;
-
     if (leadIsTrump) {
       if (higher.length > 0) return higher;
       if (samesuit.length > 0) return samesuit;
       return player.cards;
     }
-
     if (higher.length > 0) return higher;
     if (samesuit.length > 0) return samesuit;
     if (!isLastPlayer && trump.length > 0) return trump;
     return player.cards;
   };
 
-  const botPlay = (
-    gs: GameState,
-    order: number[],
-    idx: number,
-    trick: Trick | null,
-  ): void => {
+  const botPlay = (gs: GameState, order: number[], idx: number, trick: Trick | null): void => {
     const playerId = order[idx];
     const player = gs.players.find((p: Player) => p.id === playerId)!;
     const legal = legalCards(player, trick, gs, idx, order.length);
@@ -418,7 +369,6 @@ const RoomPage = () => {
         ? { ...p, cards: p.cards.filter((c: Card) => c.id !== card.id) }
         : p,
     );
-
     const newTrick: Trick = trick
       ? { ...trick, plays: [...trick.plays, { playerId, card }] }
       : { leadCard: card, leadPlayer: playerId, plays: [{ playerId, card }] };
@@ -427,6 +377,8 @@ const RoomPage = () => {
     setGame(newGs);
     setCurrentTrick(newTrick);
     setSelectedPlay(null);
+
+    playCardSound(); // 🔊 Карт тавих дуу (bot болон хүн аль алинд)
 
     const nextIdx = idx + 1;
     if (nextIdx >= order.length) {
@@ -445,13 +397,7 @@ const RoomPage = () => {
 
   const handlePlayerPlay = (): void => {
     if (!game || !selectedPlay || phase !== "playing") return;
-    const legal = legalCards(
-      game.players[0],
-      currentTrick,
-      game,
-      currentPlayIdx,
-      playOrder.length,
-    );
+    const legal = legalCards(game.players[0], currentTrick, game, currentPlayIdx, playOrder.length);
     if (!legal.find((c: Card) => c.id === selectedPlay.id)) {
       setMessage("⚠️ Энэ картыг тоглох боломжгүй!");
       return;
@@ -463,13 +409,8 @@ const RoomPage = () => {
   // ── Гэрийн хожигч ──────────────────────────────────────────────────────
 
   const resolveTrick = (gs: GameState, trick: Trick, order: number[]): void => {
-    const trumpPlays = trick.plays.filter(
-      (p: TrickPlay) => p.card.suit === gs.trumpSuit,
-    );
-    const leadSuitPlays = trick.plays.filter(
-      (p: TrickPlay) => p.card.suit === trick.leadCard.suit,
-    );
-
+    const trumpPlays = trick.plays.filter((p: TrickPlay) => p.card.suit === gs.trumpSuit);
+    const leadSuitPlays = trick.plays.filter((p: TrickPlay) => p.card.suit === trick.leadCard.suit);
     const winner: TrickPlay =
       trumpPlays.length > 0
         ? trumpPlays.reduce((best: TrickPlay, cur: TrickPlay) =>
@@ -485,6 +426,7 @@ const RoomPage = () => {
     const newGs = { ...gs, players: newPlayers };
     setGame(newGs);
     setMessage(`🏠 ${PLAYER_LABELS[winner.playerId]} гэр авлаа!`);
+    playTrickWinSound(); // 🔊 Гэр авах дуу
 
     const allEmpty = newGs.players
       .filter((p: Player) => !p.skipped)
@@ -516,8 +458,6 @@ const RoomPage = () => {
 
   const endRound = async (gs: GameState): Promise<void> => {
     const playerKeys = ["player", "bot1", "bot2", "bot3", "bot4"];
-
-    // Өнжсөн тоглогчийг илгээхгүй → backend -1 гэж тооцно
     const tricksWon: Record<string, number> = {};
     gs.players.forEach((p: Player, i: number) => {
       if (!p.skipped) {
@@ -533,7 +473,6 @@ const RoomPage = () => {
       });
       const data = await res.json();
 
-      // Тоглоом дууссан
       if (data.status === "finished") {
         const pts: Record<string, number> = data.playersPoints;
         const winnerKey = Object.entries(pts).find(([, v]) => v <= 0)?.[0];
@@ -541,53 +480,21 @@ const RoomPage = () => {
           ? PLAYER_LABELS[playerKeys.indexOf(winnerKey)]
           : "?";
         setMessage(`🎉 ${winnerLabel} тоглоомыг дуусгалаа!`);
-        setPhase("playing"); // товч харуулахгүй байх
+        setPhase("playing");
         return;
       }
 
-      // Шинэ round ирлээ → state-г шинэчил
       const mapCard = (cardId: number): Card =>
         (CardsData as Card[]).find((c: Card) => c.id === cardId)!;
-
       const round = data.round;
       const dealer: number = round.currentPlayer;
 
       const players: Player[] = [
-        {
-          id: 0,
-          cards: round.playerCards.map(mapCard),
-          score: round.playersPoints.player,
-          skipped: false,
-          tricksWon: 0,
-        },
-        {
-          id: 1,
-          cards: round.bot1Cards.map(mapCard),
-          score: round.playersPoints.bot1,
-          skipped: false,
-          tricksWon: 0,
-        },
-        {
-          id: 2,
-          cards: round.bot2Cards.map(mapCard),
-          score: round.playersPoints.bot2,
-          skipped: false,
-          tricksWon: 0,
-        },
-        {
-          id: 3,
-          cards: round.bot3Cards.map(mapCard),
-          score: round.playersPoints.bot3,
-          skipped: false,
-          tricksWon: 0,
-        },
-        {
-          id: 4,
-          cards: round.bot4Cards.map(mapCard),
-          score: round.playersPoints.bot4,
-          skipped: false,
-          tricksWon: 0,
-        },
+        { id: 0, cards: round.playerCards.map(mapCard), score: round.playersPoints.player, skipped: false, tricksWon: 0 },
+        { id: 1, cards: round.bot1Cards.map(mapCard), score: round.playersPoints.bot1, skipped: false, tricksWon: 0 },
+        { id: 2, cards: round.bot2Cards.map(mapCard), score: round.playersPoints.bot2, skipped: false, tricksWon: 0 },
+        { id: 3, cards: round.bot3Cards.map(mapCard), score: round.playersPoints.bot3, skipped: false, tricksWon: 0 },
+        { id: 4, cards: round.bot4Cards.map(mapCard), score: round.playersPoints.bot4, skipped: false, tricksWon: 0 },
       ];
 
       const topCard = mapCard(round.topCard);
@@ -637,22 +544,14 @@ const RoomPage = () => {
     phase === "playing" &&
     currentPlayIdx < playOrder.length &&
     playOrder[currentPlayIdx] === 0
-      ? legalCards(
-          humanPlayer,
-          currentTrick,
-          game,
-          currentPlayIdx,
-          playOrder.length,
-        )
+      ? legalCards(humanPlayer, currentTrick, game, currentPlayIdx, playOrder.length)
       : [];
   const legalIds = new Set(legalNow.map((c: Card) => c.id));
-
   const maxSwapNow = Math.min(game.deck.length, humanPlayer.cards.length);
 
   return (
     <div className="relative h-screen w-full bg-slate-900 text-white overflow-hidden select-none">
       <GameHeader game={game} phase={phase} message={message} />
-
       <PlayerArea
         game={game}
         phase={phase}
@@ -666,11 +565,12 @@ const RoomPage = () => {
         selectedPlay={selectedPlay}
         legalIds={legalIds}
         onToggleSwapCard={toggleSwapCard}
-        onSelectPlayCard={(card) => setSelectedPlay(card)}
+        onSelectPlayCard={(card) => {
+          playCardSound(); // 🔊 Карт сонгох дуу
+          setSelectedPlay(card);
+        }}
       />
-
       <CenterArea game={game} currentTrick={currentTrick} />
-
       <ActionButtons
         phase={phase}
         decideOrder={decideOrder}
@@ -690,7 +590,6 @@ const RoomPage = () => {
         onDealerSkipSwap={handleDealerSkipSwap}
         onPlay={handlePlayerPlay}
       />
-
       <ScoreTable players={game.players} />
     </div>
   );

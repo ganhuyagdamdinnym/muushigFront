@@ -13,7 +13,7 @@ type RoomInfo = {
 export function ButtonDemo() {
   const router = useRouter();
   const [rooms, setRooms] = useState<RoomInfo[]>([]);
-  const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL;
+  const API_URL = "https://muushig-back-end.onrender.com"
 
   useEffect(() => {
     const fetchRooms = () => {

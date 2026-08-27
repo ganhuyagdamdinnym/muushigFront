@@ -7,7 +7,7 @@ import { SideBar } from "./SideBar";
 export const HomePageHeader = () => {
   const [sideBarOpen, setSidebarOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
-  const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL;
+  const API_URL = "https://muushig-back-end.onrender.com"
 
   const [user, setUser] = useState({
     id: "",
